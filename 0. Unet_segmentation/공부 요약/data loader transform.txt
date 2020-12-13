@@ -1,0 +1,135 @@
+## 데이터 로더를 구현하기
+class Dataset(torch.utils.data.Dataset):			#torch.~로 상속을 받아주게 함
+	def __init__(self, data_dir, transform=None):       # 할당받을 argument 선언
+		self.data_dir = data_dir   # dataset 리스트
+		self.transform = transform
+
+		lst_data = os.listdir(self.data_dir)
+
+
+		lst_label = [f for f in lst_data if f.startswith('label')] #startswith를 이용해서 pre fixed 되어있는 리스트만 따로 정리할 수 있다. for 문 앞에 문자를 쓰면 바로 실행 가능하다. (러닝랩수업중)
+		lst_input = 위와동일
+
+		lst_label.sort()
+		lst_input.sort()
+
+		self.lst_label = lst_label
+		self.lst_input = lst_input
+
+	def __len__(self):
+		return len(self.lst_label)
+
+	def __getitem__(self, index):		#인덱스에 해당하는 파일을 로드해서 리턴하는 형태로 데이터를 얻는 함수
+		label = np.load(os.path. join(self.data_dir, self.lst_label[index])))	#라벨은 넘파이형태로 저장되어 있음
+
+
+		label = label/255.0
+		input = input/255.0
+
+		# 뉴럴넷에 들어가는 모든 인풋은 3개의 axis가 들어가야 한다. (x, y, channel)
+		# 채널이 없는 경우 혹은 채널의 축이 무시되는 경우가 있는데 이때는 임의로 채널을 생성해야 한다.
+
+		if label.ndim ==2:
+			label = label[:, :, np.newaxis] # 이렇게 하면 자동으로 임의의 축이 생성된다.
+
+		if input ~ 위와 동일
+]
+		data = { 'input' : input, 'label' : label}		#사전형 자료
+
+		if self.transform:	#만약에 transform function을 데이터 로더의 argument로 넣는다면 transform된 데이터를받도록 구현
+			data = self.transform(data)
+		return data
+
+##
+dataset_train = Dataset(data_dir=os.path.join(data)dir, 'train'))
+
+##
+data = dataset_train.__getitem__(0)		#위에서 정의한 데이터를 확인하는 함수 사용, 0이니까 첫번째 데이터확인
+
+input = data['input']
+label = data['label']
+
+##
+plt.subplot(121)
+plt.imshow(input)
+
+plt.subplot(122)
+plt.imshow(label)
+
+##plt.subplot하면 에러가 뜬다, 왜? subplot은 2by2만 디멘젼으로 받는데 실제로 입력값은 3개의 디멘젼이기때문
+##파이토치에 들어가는 디멘젼은 반드시 3개의 디멘젼이어야 한다. 가로 세로 채널
+
+그러므로...
+
+plt.subplot(121)
+plt.imshow(input.squeeze())
+
+plot.subplot(122)
+plt.imshow(label.squeeze())
+
+plt.show()
+
+## 자주 사용되는 transform에 대해 알아보자. (트랜스폼 구현하기)
+
+class ToTensor(object):
+	def__init__(self, data):
+		label, input = data['label'], data['input]
+
+		label = label.transpose()	# image의 numpy 차원 (Y, X, CHc=채널), 파이토치의 인풋으로 들어가는 매트릭스의 경우 (채널, Y, X)
+		label = label.transpose((2, 0, 1)).astype(np.float32)	# 넘파이의 채널을 첫번째로 옮기고 나머지는 그대로 (아마 인자가 바꿀 차원, 바꿀 위치의 차원, 나머진 어떻게 할것인지)일듯
+		input = label.transpose((2,0,1)).astype(np.float32)
+
+		data = {'label' : torch.from_numpy(label), 'input' : torch.from_numpy(input)} #넘파이를 텐서로 넘겨주는 from_numpy 함수 사용
+
+		return data
+
+class Normalization(object):
+	def __init__(self, maen=0.5, std=0.5):
+		self.mean = mean
+		self.std = std
+
+	def __call__(self, data):
+		label, input = data['label'], data['input']
+
+		input = (input - self.mean) / self.std	#라벨같은 경우는 0 또는 1이라는 클래스로 정의되어 있기 때문에 하면 안되고 이미지에만 적용
+
+		data = {'label' : label, 'input' :input}
+
+		return data
+
+
+class RandomFlip(object):
+    def __call__(self, data):
+        label, input = data['label'], data['input']
+
+        if np.random.rand() > 0.5:
+            label = np.fliplr(label)
+            input = np.fliplr(input)
+
+        if np.random.rand() > 0.5:
+            label = np.flipud(label)
+            input = np.flipud(input)
+
+        data = {'label': label, 'input': input}
+
+        return data
+
+## 이번에는 transforms(토치비전)을 추가
+transform = transforms.Compose([Normalization(mean=0.5, std=0.5), RandomFlip(), ToTensor()]) #여러가지 트랜스폼 펑션을 엮어 쓸수잇다.
+dataset_train = Dataset(data_dir=os.path.join(data)dir, 'train'), transform=transform)
+
+##
+data = dataset_train.__getitem__(0)		#위에서 정의한 데이터를 확인하는 함수 사용, 0이니까 첫번째 데이터확인
+
+input = data['input']
+label = data['label']
+
+##
+
+plt.subplot(121)
+plt.imshow(input.squeeze())
+
+plot.subplot(122)
+plt.imshow(label.squeeze())
+
+plt.show()

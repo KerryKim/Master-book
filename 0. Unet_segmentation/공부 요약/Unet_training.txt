@@ -1,0 +1,137 @@
+006 UNet training 시키기
+
+## 네트워크 학습하기
+transform = transforms.Compose(Normalization(mean=0.5, std=0.5), RandomFlip(), ToTensor())
+
+* 트레인에 필요한 데이터 셋 불러오기
+dataset_train = Dataset(data_dir=os.path.join(data_dir, 'train'), transform=transform)
+loader_train = DataLoader(dataset_train, batch_size=batch_size, shuffle=True, num_workers=8)
+
+* val에 필요한 데이터 셋 불러오기 (동영상참고)
+
+##네트워크 생성하기
+net = UNet().to(device)		*to(device)를 쓰면 네트워크가 cpu학습할지 gpu학습할지 설정할 수 있다.
+
+## 손실함수 정의하기
+fn_loss = nn.BCEWithLogistisLoss().to(device)
+
+## Optimizer 설정하기
+optim = torch.optim.Adam(net,parameters(), lr=lr)
+
+## 그밖에 부수적인 variables 설정하기
+num_data_train = len(dataset_train)
+num_data_val = len(dataset_val)
+
+* 트레이닝 셋과 발리데이션 셋의 갯수를 설정하는 변수 설정, 즉 배치사이즈로 인해 나누어지는 학습의 수를 계산
+num_batch_train = np.ceil(num_data_train / batch_size)
+num_batch_val = np.ceil(num_data_val / batch_size)
+
+## 그 밖에 부수적인 functions 설정하기
+fn_tonumpy = lambda x: x.to('cpu).detach().numpy().transpose(0, 2, 3, 1)	*텐서를 다시 넘파이로 변환시켜주는 함수
+fn_denorm = lambda x, mean, std: (x * std) +mean			*normalization을 다시 de no~해주는 함수
+fn_class - lambda x: 1.0 * (x > 0.5)					*네트워크 아웃풋의 이미지를 바이너리 클래스로 분류해주는 클래스 함수
+
+## Tensorboard를 사용하기 위한 SummaryWriter 설정
+writer_train = SummaryWriter(log_dir=os.path.join(log_dir, 'train'))
+writer_val = SummaryWriter(log_dir=os.path.join(log_dir, 'val'))
+
+## 네트워크 학습시키기
+st_epoch = 0
+
+for epoch in range(st_eopch +1, num_epoch +1):
+	net.train()
+	loss_arr = []
+
+	for batch, data in enumerate(loader_train, 1):
+		#forward pass
+		label = data['label'].to(device)
+		input = data['input'].to(device)
+
+		output = net(input)
+
+		# backward pass
+		optim.zero_grad()
+	
+		loss = fn_loss(output, label)
+		loss.backward()
+
+		optim.step()
+
+		#손실함수 계산
+		loss_arr += [loss.item()]
+
+		print("TRAIN: EPOCH %04d / %04d | BATCH %04d / %04d | LOSS %.4f"%
+		(epoch, num_epoch, batch, num_batch_train, np.mean(loss_arr)))
+
+		#Tensorboard 저장하기
+		label = fn_tonumpy(label)
+		input = fn_tonumpy(fn_denorm(input, mean=0.5, std=0.5)
+		output = fn_tonumpy(fn_class(output))
+
+		writer_train.add_image('label', label, num_batch_train * (epoch -1) + batch, dataformats='NHWC')
+		writer_train.add_image('input', input, num_batch_train * (epoch -1) + batch, dataformats='NHWC')
+		writer_train.add_image('output', output, num_batch_train * (epoch -1) + batch, dataformats='NHWC')
+	
+	writer_train.add_scalar('loss', np.mean(loss_arr), epoch)	*loss를 텐서보드에 저장
+
+↑ 네트워크를 트레이닝하는 부분
+↓ 네트워크를 발리데이션 하는 부분
+
+* 발리데이션 하는 부분은 백프로파게이션이 없기 때문에 백프롭을 막기 위해서 torch.no_grad()라는 함수를 activate 시키자
+  그리고 또한 네트워크에게 발리데이션이라는 걸 하는 것이라는 걸 명시하기 위해 net.eval() 선언
+
+	with torch.no_grade():
+		net.eval()
+		loss_arr = []
+	
+		for batch, data in enumerate(loader_val, 1):
+			#forward pass
+			label = data['label'].to(device)
+			input = data['input'].to(device)
+
+			output = net(input)
+
+			#손실함수 
+		        	loss = fn_loss(output, label)
+
+			loss_arr =- [loss.tiem()]
+			*이하는 위와 유사함 영상 참고
+
+writer_train.close()
+write_val.close()
+
+
+* 여기서 빠진 부분이 2개가 있다 네트워크를 저장하고 로드하는 함수다.
+
+## 네트워크 저장하기 (실제 영상에선 상단에 올라가서 쓴다.)
+def save(ckpt_dir, net, optim, epoch):
+	if not os.paht.exists(ckpt_dir):
+		os.makedirs(ckpt_dir)
+
+	torch.save({'net': net.state_dict(), 'optim': optim.state_dict()},
+			"./%s/model_epoch%d.pth" % (ckpt_dir, epoch))
+
+## 네트워크 불러오기
+def load(ckpt_dir, net, optim):
+	if not os.path.exists(ckpt_dir):
+		epoch = 0
+		return net, optim, epoch
+
+	ckpt_lst = os.listdir(ckpt_dir)
+	ckpt_lst.sort(key=lambda f: int(''.join(filter(str.isdigit, f))))
+
+	dict_model = torch.load('./%s/%s' % (ckpt_dir, ckpt_lst[-1]))
+
+	net.load_state_dict(dict_model['net'])
+	optim.load_state_dict(dict_model['optim'])
+	epoch = int(ckpt_lst[-1].split('epoch')[1].split('.pth')[0])
+
+	return net, optim, epoch
+
+* 네트워크를 학습시키기 이전에 저장되어 있는 네트워크가 있다면 불러와서 네트워크를 학습시킬수 있게 끔 코드를 추가
+net, optim, st_epoch = load(ckpt_dir=ckpt_dir, net=net, optim=optim)
+
+* 에폭이 한번 돌때마다 저장하는 함수 구현 (숫자 바꿀수있음)
+if epoch % 1 == 0:
+	save(ckpt=ckpt_dir, net=net, optim=optim, epoch=epoch)
+
